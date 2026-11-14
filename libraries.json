@@ -1,0 +1,8 @@
+{
+  "libraries": [
+    "WiFi",
+    "PubSubClient",
+    "TinyGPSPlus",
+    "ArduinoJson"
+  ]
+}
