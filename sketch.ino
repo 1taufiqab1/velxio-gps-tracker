@@ -3,8 +3,8 @@
 #include <TinyGPSPlus.h>
 #include <ArduinoJson.h>
 
-#define GPS_RX 16
-#define GPS_TX 17
+#define ESP32_RX2_PIN 16
+#define ESP32_TX2_PIN 17
 #define GPS_BAUD 9600
 #define LED_A_PIN 32
 #define LED_B_PIN 33
@@ -159,7 +159,7 @@ void setup() {
   Serial.begin(115200);
   pinMode(LED_A_PIN, OUTPUT);
   pinMode(LED_B_PIN, OUTPUT);
-  gps_serial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX, GPS_TX);
+  gps_serial.begin(GPS_BAUD, SERIAL_8N1, ESP32_RX2_PIN, ESP32_TX2_PIN);
 
   WiFi.begin(wifi_ssid);
   Serial.print("Connecting to WiFi");
