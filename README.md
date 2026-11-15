@@ -23,8 +23,8 @@
 |---|---|---|
 | GPS NEO-6M | VCC | 3V3 |
 | | GND | GND |
-| | RX | GPIO 16 (TX2) |
-| | TX | GPIO 17 (RX2) |
+| | TX | GPIO 16 (RX2) |
+| | RX | GPIO 17 (TX2) |
 | LED A | Anoda (+) | GPIO 32 |
 | | Katoda (-) | GND (resistor) |
 | LED B | Anoda (+) | GPIO 33 |
