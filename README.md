@@ -1,6 +1,8 @@
-# Velxio GPS Tracker
+# [Velxio GPS Tracker](https://velxio.dev/1taufiqab1/gps-tracker/)
 
 ![cover](https://lh3.googleusercontent.com/d/1Gfi19k2lcbCBz2L6g7iS7LXVj-fUL-bP)
+
+## [Link Project Klik Disini](https://velxio.dev/1taufiqab1/gps-tracker/)
 
 ## 1. Komponen dan Library
 
@@ -85,9 +87,34 @@ Contoh payload telemetry:
 }
 ```
 
-### C. Kontrol GPS melalui MQTT
+### C. Pengujian Koneksi MQTT
 
-Perangkat dapat menerima perintah melalui topic command.
+Pengujian dapat dilakukan menggunakan HiveMQ WebSocket Client:
+
+```url
+https://www.hivemq.com/demos/websocket-client/
+```
+
+Konfigurasi koneksi:
+
+| Konfigurasi | Nilai |
+|---|---|
+| Host | `test.mosquitto.org` |
+| Port | `8081` |
+
+Klik **Connect** untuk menghubungkan ke MQTT Broker.
+
+Untuk melihat seluruh komunikasi perangkat, lakukan subscribe ke topic:
+
+```text
+tracker/devices/esp32-kel2iot/#
+```
+
+Untuk mengirim command ke ESP32, gunakan topic:
+
+```text
+tracker/devices/esp32-kel2iot/command
+```
 
 **Mengaktifkan GPS:**
 
@@ -130,8 +157,6 @@ Contoh menonaktifkan GPS:
   "active": false
 }
 ```
-
-### D. Validasi Device ID
 
 Perintah JSON dapat menyertakan `device_id`.
 
@@ -205,4 +230,9 @@ Terdapat dua LED untuk menunjukkan kondisi perangkat.
 
 ## 8. Catatan 
 
-- 
+- Menggunkaan broker public jadi tidak privacy.
+- Field data geo GPS yang dikirim hanya latitude, longitude, altitude, dan speed karena batasan simulasi GPS di Velxio hanya ada itu.
+- Di Velxio nggak ada Wemos D1 Mini jadi belum nyoba pakai MCU itu.
+- Tidak menggunakan library Geolinker seperti di artikel kemarin karena kita tidak pakai API mereka.
+- Disini kirim data setiap 666 ms which is terlalu cepat, karena simulasi di Velxio waktunya lebih lambat +-3x lipat dunia nyata, jadi 666 ms velxio ≈ 2 detik dunia nyata. Untuk real iot nanti bisa diubah menjadi 2 detik.
+- Ketika OFF, ESP32 berhenti memproses dan mengirim data GPS ke MQTT, tetapi modul GPS NEO-6M tetap menyala dan mengirimkan data.
