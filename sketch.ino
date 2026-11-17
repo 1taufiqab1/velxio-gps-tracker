@@ -206,9 +206,9 @@ void loop() {
       char msg[msg_size];
 
       int len = snprintf(msg, sizeof(msg),
-                "{\"device_id\":\"%s\",\"lat\":%.6f,\"lng\":%.6f,\"alt_m\":%.1f,\"speed_kn\":%.1f",
+                "{\"device_id\":\"%s\",\"lat\":%.6f,\"lng\":%.6f,\"speed\":%.1f",
                 DEVICE_ID, gps.location.lat(), gps.location.lng(),
-                gps.altitude.meters(), gps.speed.knots());
+                gps.speed.knots());
 
       if (gps.date.isValid() && gps.time.isValid()) {
         len += snprintf(msg + len, sizeof(msg) - len,
