@@ -2,6 +2,7 @@
 #include <PubSubClient.h>
 #include <TinyGPSPlus.h>
 #include <ArduinoJson.h>
+#include "secrets.h"
 
 #define ESP32_RX2_PIN 16
 #define ESP32_TX2_PIN 17
@@ -10,12 +11,6 @@
 #define LED_B_PIN 33
 #define DEVICE_ID "esp32:001"
 
-const char* wifi_ssid          = "Velxio-GUEST";
-const char* wifi_password      = "";
-const char* mqtt_server        = "test.mosquitto.org";
-const int   mqtt_port          = 1884;
-const char* mqtt_username      = "rw";
-const char* mqtt_password      = "readwrite";
 const char* mqtt_topic         = "tracker/devices/" DEVICE_ID "/telemetry";
 const char* mqtt_command_topic = "tracker/devices/" DEVICE_ID "/command";
 const int   mqtt_keep_alive    = 60;
