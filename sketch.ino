@@ -15,7 +15,6 @@ const char* mqtt_server        = "test.mosquitto.org";
 const int   mqtt_port          = 1883;
 const char* mqtt_topic         = "tracker/devices/" DEVICE_ID "/telemetry";
 const char* mqtt_command_topic = "tracker/devices/" DEVICE_ID "/command";
-const char* mqtt_status_topic  = "tracker/devices/" DEVICE_ID "/status";
 const int   mqtt_keep_alive    = 60;
 const int   msg_size           = 160;
 const int   cmd_size           = 128;
@@ -69,26 +68,6 @@ void update_leds() {
   digitalWrite(LED_B_PIN, led_b);
 }
 
-void send_status(const char* error) {
-  char status[msg_size];
-
-  int len = snprintf(status, sizeof(status),
-                     "{\"device_id\":\"%s\",\"active\":%s,\"interval_seconds\":%.3f",
-                     DEVICE_ID, gps_enabled ? "true" : "false", interval_seconds);
-
-  if (error) {
-    len += snprintf(status + len, sizeof(status) - len,
-                    ",\"error\":\"%s\"", error);
-  }
-
-  snprintf(status + len, sizeof(status) - len, "}");
-  mqtt.publish(mqtt_status_topic, status);
-}
-
-void publish_status() {
-  send_status(nullptr);
-}
-
 void set_active(bool on) {
   if (on == gps_enabled) return;
   if (on) gps = TinyGPSPlus();
@@ -106,12 +85,10 @@ void on_message(char* topic, byte* payload, unsigned int length) {
 
   if (strcmp(cmd, "1") == 0 || strcasecmp(cmd, "true") == 0) {
     set_active(true);
-    publish_status();
     return;
   }
   if (strcmp(cmd, "0") == 0 || strcasecmp(cmd, "false") == 0) {
     set_active(false);
-    publish_status();
     return;
   }
 
@@ -120,7 +97,6 @@ void on_message(char* topic, byte* payload, unsigned int length) {
 
   if (err || !doc.is<JsonObject>()) {
     Serial.println("Invalid command");
-    send_status("Invalid command");
     return;
   }
 
@@ -128,12 +104,9 @@ void on_message(char* topic, byte* payload, unsigned int length) {
     const char* id = doc["device_id"] | "";
     if (strcmp(id, DEVICE_ID) != 0) {
       Serial.println("Command ignored: device_id mismatch");
-      send_status("Command ignored: device_id mismatch");
       return;
     }
   }
-
-  const char* error = nullptr;
 
   if (doc["interval_seconds"].is<float>()) {
     float value = doc["interval_seconds"];
@@ -144,15 +117,12 @@ void on_message(char* topic, byte* payload, unsigned int length) {
       Serial.println(" s");
     } else {
       Serial.println("Invalid interval, ignored");
-      error = "Invalid interval, ignored";
     }
   }
 
   if (doc["active"].is<bool>()) {
     set_active(doc["active"]);
   }
-
-  send_status(error);
 }
 
 void setup() {
@@ -185,7 +155,6 @@ void loop() {
     if (mqtt.connect(DEVICE_ID)) {
       mqtt.subscribe(mqtt_command_topic);
       Serial.println("MQTT connected, subscribed to command topic");
-      publish_status();
     }
   }
 
