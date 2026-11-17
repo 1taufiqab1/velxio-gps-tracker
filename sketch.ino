@@ -57,39 +57,82 @@ bool blink_on(unsigned long period_ms) {
 
 void update_leds() {
   bool led_a;
+
   if (WiFi.status() != WL_CONNECTED) led_a = blink_on(blink_fast_ms);
   else if (!mqtt.connected())        led_a = blink_on(blink_slow_ms);
   else                               led_a = true;
 
   bool led_b;
+
   if (!gps_enabled)                  led_b = false;
   else if (!gps.location.isValid())  led_b = blink_on(blink_slow_ms);
-
   else led_b = !(last_publish_ok != 0 && millis() - last_publish_ok < blip_ms);
 
   digitalWrite(LED_A_PIN, led_a);
   digitalWrite(LED_B_PIN, led_b);
 }
 
+void initialize_hardware() {
+  Serial.begin(115200);
+
+  pinMode(LED_A_PIN, OUTPUT);
+  pinMode(LED_B_PIN, OUTPUT);
+
+  gps_serial.begin(GPS_BAUD, SERIAL_8N1, ESP32_RX2_PIN, ESP32_TX2_PIN);
+}
+
+void connect_wifi() {
+  WiFi.begin(wifi_ssid, wifi_password);
+
+  Serial.print("Connecting to WiFi");
+
+  unsigned long last_dot = 0;
+
+  while (WiFi.status() != WL_CONNECTED) {
+    update_leds();
+
+    if (millis() - last_dot >= 500) {
+      last_dot = millis();
+      Serial.print(".");
+    }
+
+    delay(10);
+  }
+
+  Serial.println("\nWiFi connected");
+}
+
+void initialize_mqtt() {
+  mqtt.setServer(mqtt_server, mqtt_port);
+  mqtt.setKeepAlive(mqtt_keep_alive);
+  mqtt.setCallback(on_message);
+}
+
+void reconnect_mqtt() {
+  if (!mqtt.connected()) {
+    if (mqtt.connect(DEVICE_ID, mqtt_username, mqtt_password)) {
+      mqtt.subscribe(mqtt_command_topic);
+      Serial.println("MQTT connected, subscribed to command topic");
+    }
+  }
+}
+
 void set_active(bool on) {
   if (on == gps_enabled) return;
+
   if (on) gps = TinyGPSPlus();
+
   gps_enabled = on;
+
   Serial.println(on ? "GPS ON" : "GPS OFF");
 }
 
-void on_message(char* topic, byte* payload, unsigned int length) {
-  char cmd[cmd_size];
-
-  unsigned int n = length < sizeof(cmd) - 1 ? length : sizeof(cmd) - 1;
-  memcpy(cmd, payload, n);
-
-  cmd[n] = '\0';
-
+void handle_command(char* cmd) {
   if (strcmp(cmd, "1") == 0 || strcasecmp(cmd, "true") == 0) {
     set_active(true);
     return;
   }
+
   if (strcmp(cmd, "0") == 0 || strcasecmp(cmd, "false") == 0) {
     set_active(false);
     return;
@@ -105,6 +148,7 @@ void on_message(char* topic, byte* payload, unsigned int length) {
 
   if (!doc["device_id"].isNull()) {
     const char* id = doc["device_id"] | "";
+
     if (strcmp(id, DEVICE_ID) != 0) {
       Serial.println("Command ignored: device_id mismatch");
       return;
@@ -117,6 +161,7 @@ void on_message(char* topic, byte* payload, unsigned int length) {
 
       if (value == 2 || value == 5 || value == 10 || value == 30) {
         interval_seconds = value;
+
         Serial.print("Interval set to ");
         Serial.print(interval_seconds);
         Serial.println(" s");
@@ -133,83 +178,113 @@ void on_message(char* topic, byte* payload, unsigned int length) {
   }
 }
 
-void setup() {
-  Serial.begin(115200);
-  pinMode(LED_A_PIN, OUTPUT);
-  pinMode(LED_B_PIN, OUTPUT);
-  gps_serial.begin(GPS_BAUD, SERIAL_8N1, ESP32_RX2_PIN, ESP32_TX2_PIN);
+void on_message(char* topic, byte* payload, unsigned int length) {
+  char cmd[cmd_size];
 
-  WiFi.begin(wifi_ssid, wifi_password);
-  Serial.print("Connecting to WiFi");
-  unsigned long last_dot = 0;
+  unsigned int n = length < sizeof(cmd) - 1 ? length : sizeof(cmd) - 1;
+  memcpy(cmd, payload, n);
 
-  while (WiFi.status() != WL_CONNECTED) {
-    update_leds();
-    if (millis() - last_dot >= 500) {
-      last_dot = millis();
-      Serial.print(".");
-    }
-    delay(10);
-  }
-  Serial.println("\nWiFi connected");
+  cmd[n] = '\0';
 
-  mqtt.setServer(mqtt_server, mqtt_port);
-  mqtt.setKeepAlive(mqtt_keep_alive);
-  mqtt.setCallback(on_message);
+  handle_command(cmd);
 }
 
-void loop() {
-  if (!mqtt.connected()) {
-    if (mqtt.connect(DEVICE_ID, mqtt_username, mqtt_password)) {
-      mqtt.subscribe(mqtt_command_topic);
-      Serial.println("MQTT connected, subscribed to command topic");
-    }
+void discard_gps_data() {
+  while (gps_serial.available()) {
+    gps_serial.read();
+  }
+}
+
+void read_gps_data() {
+  while (gps_serial.available()) {
+    gps.encode(gps_serial.read());
+  }
+}
+
+bool is_telemetry_interval_elapsed() {
+  return interval_seconds > 0 &&
+         millis() - last_send >= (unsigned long)(interval_seconds * 1000);
+}
+
+void print_telemetry(const char* msg) {
+  char time_str[12] = "--:--:--";
+
+  if (gps.time.isValid()) {
+    snprintf(
+      time_str,
+      sizeof(time_str),
+      "%02d:%02d:%02d",
+      (gps.time.hour() + 7) % 24,
+      gps.time.minute(),
+      gps.time.second()
+    );
   }
 
-  mqtt.loop();
-  update_leds();
+  Serial.print("[");
+  Serial.print(time_str);
+  Serial.print("] ");
+  Serial.println(msg);
+}
 
+void publish_telemetry() {
+  char msg[msg_size];
+
+  int len = snprintf(
+    msg,
+    sizeof(msg),
+    "{\"device_id\":\"%s\",\"lat\":%.6f,\"lng\":%.6f,\"speed\":%.1f",
+    DEVICE_ID,
+    gps.location.lat(),
+    gps.location.lng(),
+    gps.speed.knots()
+  );
+
+  if (gps.date.isValid() && gps.time.isValid()) {
+    len += snprintf(
+      msg + len,
+      sizeof(msg) - len,
+      ",\"timestamp\":%lu",
+      gps_epoch()
+    );
+  }
+
+  snprintf(msg + len, sizeof(msg) - len, "}");
+
+  print_telemetry(msg);
+
+  if (mqtt.publish(mqtt_topic, msg)) {
+    last_publish_ok = millis();
+  }
+}
+
+void process_gps() {
   if (!gps_enabled) {
-    while (gps_serial.available()) gps_serial.read();
+    discard_gps_data();
     return;
   }
 
-  while (gps_serial.available()) gps.encode(gps_serial.read());
+  read_gps_data();
 
-  if (interval_seconds > 0 &&
-      millis() - last_send >= (unsigned long)(interval_seconds * 1000)) {
-    last_send = millis();
+  if (!is_telemetry_interval_elapsed()) return;
 
-    if (gps.location.isValid()) {
-      char msg[msg_size];
+  last_send = millis();
 
-      int len = snprintf(msg, sizeof(msg),
-                "{\"device_id\":\"%s\",\"lat\":%.6f,\"lng\":%.6f,\"speed\":%.1f",
-                DEVICE_ID, gps.location.lat(), gps.location.lng(),
-                gps.speed.knots());
-
-      if (gps.date.isValid() && gps.time.isValid()) {
-        len += snprintf(msg + len, sizeof(msg) - len,
-                        ",\"timestamp\":%lu", gps_epoch());
-      }
-
-      snprintf(msg + len, sizeof(msg) - len, "}");
-
-      char time_str[12] = "--:--:--";
-      if (gps.time.isValid()) {
-
-        snprintf(time_str, sizeof(time_str), "%02d:%02d:%02d",
-                (gps.time.hour() + 7) % 24, gps.time.minute(), gps.time.second());
-      }
-
-      Serial.print("[");
-      Serial.print(time_str);
-      Serial.print("] ");
-      Serial.println(msg);
-
-      if (mqtt.publish(mqtt_topic, msg)) last_publish_ok = millis();
-    } else {
-      Serial.println("Waiting for GPS fix...");
-    }
+  if (gps.location.isValid()) {
+    publish_telemetry();
+  } else {
+    Serial.println("Waiting for GPS fix...");
   }
+}
+
+void setup() {
+  initialize_hardware();
+  connect_wifi();
+  initialize_mqtt();
+}
+
+void loop() {
+  reconnect_mqtt();
+  mqtt.loop();
+  update_leds();
+  process_gps();
 }
