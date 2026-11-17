@@ -8,7 +8,7 @@
 #define GPS_BAUD 9600
 #define LED_A_PIN 32
 #define LED_B_PIN 33
-#define DEVICE_ID "esp32-kel2iot"
+#define DEVICE_ID "esp32:001"
 
 const char* wifi_ssid          = "Velxio-GUEST";
 const char* mqtt_server        = "test.mosquitto.org";
