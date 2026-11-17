@@ -29,8 +29,8 @@ PubSubClient mqtt(wifi_client);
 
 unsigned long last_send = 0;
 unsigned long last_publish_ok = 0;
-bool gps_enabled = true;
-float interval_seconds = 0.666;
+bool gps_enabled = false;
+int interval_seconds = 0;
 
 unsigned long gps_epoch() {
   int y = gps.date.year();
@@ -108,13 +108,18 @@ void on_message(char* topic, byte* payload, unsigned int length) {
     }
   }
 
-  if (doc["interval_seconds"].is<float>()) {
-    float value = doc["interval_seconds"];
-    if (value > 0) {
-      interval_seconds = value;
-      Serial.print("Interval set to ");
-      Serial.print(interval_seconds);
-      Serial.println(" s");
+  if (!doc["interval_seconds"].isNull()) {
+    if (doc["interval_seconds"].is<int>()) {
+      int value = doc["interval_seconds"];
+
+      if (value == 2 || value == 5 || value == 10 || value == 30) {
+        interval_seconds = value;
+        Serial.print("Interval set to ");
+        Serial.print(interval_seconds);
+        Serial.println(" s");
+      } else {
+        Serial.println("Invalid interval, ignored");
+      }
     } else {
       Serial.println("Invalid interval, ignored");
     }
@@ -168,7 +173,8 @@ void loop() {
 
   while (gps_serial.available()) gps.encode(gps_serial.read());
 
-  if (millis() - last_send >= (unsigned long)(interval_seconds * 1000)) {
+  if (interval_seconds > 0 &&
+      millis() - last_send >= (unsigned long)(interval_seconds * 1000)) {
     last_send = millis();
 
     if (gps.location.isValid()) {
