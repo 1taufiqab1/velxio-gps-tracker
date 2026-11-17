@@ -35,20 +35,37 @@
 ## 3. Konfigurasi MQTT
 
 ### MQTT Broker
+
 | Konfigurasi | Nilai |
 |---|---|
-| Broker | test.mosquitto.org |
-| Port | 1883 |
+| Broker | `test.mosquitto.org` |
+| Port | `1884` |
+| Username | `rw` |
+| Password | `readwrite` |
 | Keep Alive | 60 detik |
-| Device ID | esp32-kel2iot |
+| Device ID | `esp32:001` |
 
 ### MQTT Topics
 
 | Topic | Fungsi |
 |---|---|
-| `tracker/devices/esp32-kel2iot/telemetry` | Mengirim data GPS |
-| `tracker/devices/esp32-kel2iot/command` | Menerima perintah |
-| `tracker/devices/esp32-kel2iot/status` | Mengirim status perangkat |
+| `tracker/devices/esp32:001/telemetry` | Mengirim data GPS |
+| `tracker/devices/esp32:001/command` | Menerima perintah |
+
+### Konfigurasi Secrets
+
+Kredensial WiFi dan MQTT dipisahkan ke file `secrets.h`, sehingga tidak bercampur dengan logika utama program.
+
+Konfigurasi yang digunakan saat simulasi:
+
+| Variabel | Nilai |
+|---|---|
+| WiFi SSID | `Velxio-GUEST` |
+| WiFi Password | `""` |
+| MQTT Server | `test.mosquitto.org` |
+| MQTT Port | `1884` |
+| MQTT Username | `rw` |
+| MQTT Password | `readwrite` |
 
 ## 4. Fitur Utama
 
@@ -58,7 +75,6 @@ ESP32 membaca data dari modul GPS menggunakan library TinyGPSPlus.
 
 - Latitude: garis lintang.
 - Longitude: garis bujur.
-- Altitude: ketinggian dalam meter.
 - Speed: kecepatan dalam knot.
 - Timestamp: waktu Unix dalam detik.
 
@@ -69,23 +85,32 @@ Perangkat mengirimkan data GPS secara berkala ke topic telemetry.
 Interval awal pengiriman adalah:
 
 ```cpp
-float interval_seconds = 0.666;
+bool gps_enabled = false;
+int interval_seconds = 10;
 ```
 
-Artinya, pengiriman dilakukan sekitar setiap 666 milidetik.
+GPS secara default dalam kondisi OFF, sehingga belum mengirimkan telemetry sampai diaktifkan melalui MQTT.
+
+Interval pengiriman yang diperbolehkan adalah:
+
+- 2 detik
+- 5 detik
+- 10 detik
+- 30 detik
 
 Contoh payload telemetry:
 
 ```json
 {
-  "device_id": "esp32-kel2iot",
+  "device_id": "esp32:001",
   "lat": -7.257500,
   "lng": 112.752100,
-  "alt_m": 12.5,
-  "speed_kn": 2.1,
+  "speed": 2.1,
   "timestamp": 1794700000
 }
 ```
+
+Field `timestamp` dikirim apabila tanggal dan waktu GPS valid.
 
 ### C. Pengujian Koneksi MQTT
 
@@ -100,20 +125,22 @@ Konfigurasi koneksi:
 | Konfigurasi | Nilai |
 |---|---|
 | Host | `test.mosquitto.org` |
-| Port | `8081` |
+| Port | `8091` |
+| Username | `rw` |
+| Password | `readwrite` |
 
-Klik **Connect** untuk menghubungkan ke MQTT Broker.
+Untuk koneksi ESP32 menggunakan MQTT TCP, tetap gunakan port `1884`.
 
-Untuk melihat seluruh komunikasi perangkat, lakukan subscribe ke topic:
+Untuk melihat komunikasi perangkat, lakukan subscribe ke topic:
 
 ```text
-tracker/devices/esp32-kel2iot/#
+tracker/devices/esp32:001/#
 ```
 
 Untuk mengirim command ke ESP32, gunakan topic:
 
 ```text
-tracker/devices/esp32-kel2iot/command
+tracker/devices/esp32:001/command
 ```
 
 **Mengaktifkan GPS:**
@@ -146,6 +173,7 @@ Contoh mengaktifkan GPS:
 
 ```json
 {
+  "device_id": "esp32:001",
   "active": true
 }
 ```
@@ -154,51 +182,28 @@ Contoh menonaktifkan GPS:
 
 ```json
 {
+  "device_id": "esp32:001",
   "active": false
 }
 ```
 
-Perintah JSON dapat menyertakan `device_id`.
+Interval pengiriman juga dapat diubah melalui JSON.
 
-Contoh:
-
-```json
-{
-  "device_id": "esp32-kel2iot",
-  "active": true
-}
-```
-
-Apabila `device_id` tidak sesuai dengan identitas perangkat, perintah akan diabaikan.
-
-## 5. Status Perangkat
-
-Perangkat mengirimkan status melalui topic status.
-
-Contoh payload:
+Contoh mengubah interval menjadi 5 detik:
 
 ```json
 {
-  "device_id": "esp32-kel2iot",
+  "device_id": "esp32:001",
   "active": true,
-  "interval_seconds": 0.666
+  "interval_seconds": 5
 }
 ```
 
-Jika terjadi kesalahan, status dapat menyertakan field `error`.
+Nilai `interval_seconds` hanya menerima integer `2`, `5`, `10`, dan `30`.
 
-Contoh:
+Perintah JSON dapat menyertakan `device_id`. Apabila `device_id` tidak sesuai dengan identitas perangkat, perintah akan diabaikan.
 
-```json
-{
-  "device_id": "esp32-kel2iot",
-  "active": true,
-  "interval_seconds": 0.666,
-  "error": "Invalid interval, ignored"
-}
-```
-
-## 6. Indikator LED
+## 5. Indikator LED
 
 Terdapat dua LED untuk menunjukkan kondisi perangkat.
 
@@ -219,20 +224,31 @@ Terdapat dua LED untuk menunjukkan kondisi perangkat.
 | GPS mendapatkan lokasi valid | Menyala |
 | Data berhasil dikirim | Mati sesaat sebagai indikator pengiriman |
 
-## 7. Alur Kerja Sistem
+## 6. Alur Kerja Sistem
 
-1. ESP32 menghubungkan ke WiFi dan MQTT Broker.
-2. Setelah terhubung, ESP32 melakukan subscribe ke topic command.
-3. ESP32 membaca dan memproses data GPS.
-4. Ketika lokasi valid dan interval terpenuhi, data dikirim ke MQTT.
-5. ESP32 menerima perintah untuk mengubah status GPS atau interval pengiriman.
-6. LED diperbarui sesuai kondisi WiFi, MQTT, dan GPS.
+1. ESP32 melakukan inisialisasi hardware.
+2. ESP32 menghubungkan ke WiFi.
+3. ESP32 menginisialisasi MQTT dan menghubungkan ke broker.
+4. Setelah terhubung, ESP32 melakukan subscribe ke topic command.
+5. ESP32 membaca dan memproses data GPS ketika GPS diaktifkan.
+6. Ketika lokasi valid dan interval terpenuhi, data dikirim ke MQTT.
+7. ESP32 menerima perintah untuk mengubah status GPS atau interval pengiriman.
+8. LED diperbarui sesuai kondisi WiFi, MQTT, dan GPS.
 
-## 8. Catatan 
+## 7. Catatan
 
 - Menggunkaan broker public jadi tidak privacy.
-- Field data geo GPS yang dikirim hanya latitude, longitude, altitude, dan speed karena batasan simulasi GPS di Velxio hanya ada itu.
+- Field data GPS yang dikirim melalui telemetry adalah latitude, longitude, speed, dan timestamp (opsional), tanpa satellites karena batasan simulasi Velxio.
 - Di Velxio nggak ada Wemos D1 Mini jadi belum nyoba pakai MCU itu.
 - Tidak menggunakan library Geolinker seperti di artikel kemarin karena kita tidak pakai API mereka.
-- Disini kirim data setiap 666 ms which is terlalu cepat, karena simulasi di Velxio waktunya lebih lambat +-3x lipat dunia nyata, jadi 666 ms velxio ≈ 2 detik dunia nyata. Untuk real iot nanti bisa diubah menjadi 2 detik.
+- Interval default pengiriman adalah 10 detik dan dapat diubah menjadi 2, 5, 10, atau 30 detik.
 - Ketika OFF, ESP32 berhenti memproses dan mengirim data GPS ke MQTT, tetapi modul GPS NEO-6M tetap menyala dan mengirimkan data.
+
+## 8. Update
+
+- Ubah Device ID menjadi `esp32:001`.
+- Menyesuaikan field telemetry agar sesuai dengan schema backend.
+- Hapus topik status MQTT.
+- Sesuaikan nilai interval dengan ketentuan backend dengan default 10 detik.
+- Tambah password untuk MQTT dan WiFi.
+- Refaktor dikit kode agar mudah dibaca.
