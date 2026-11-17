@@ -11,8 +11,11 @@
 #define DEVICE_ID "esp32:001"
 
 const char* wifi_ssid          = "Velxio-GUEST";
+const char* wifi_password      = "";
 const char* mqtt_server        = "test.mosquitto.org";
-const int   mqtt_port          = 1883;
+const int   mqtt_port          = 1884;
+const char* mqtt_username      = "rw";
+const char* mqtt_password      = "readwrite";
 const char* mqtt_topic         = "tracker/devices/" DEVICE_ID "/telemetry";
 const char* mqtt_command_topic = "tracker/devices/" DEVICE_ID "/command";
 const int   mqtt_keep_alive    = 60;
@@ -30,7 +33,7 @@ PubSubClient mqtt(wifi_client);
 unsigned long last_send = 0;
 unsigned long last_publish_ok = 0;
 bool gps_enabled = false;
-int interval_seconds = 0;
+int interval_seconds = 10;
 
 unsigned long gps_epoch() {
   int y = gps.date.year();
@@ -136,7 +139,7 @@ void setup() {
   pinMode(LED_B_PIN, OUTPUT);
   gps_serial.begin(GPS_BAUD, SERIAL_8N1, ESP32_RX2_PIN, ESP32_TX2_PIN);
 
-  WiFi.begin(wifi_ssid);
+  WiFi.begin(wifi_ssid, wifi_password);
   Serial.print("Connecting to WiFi");
   unsigned long last_dot = 0;
 
@@ -157,7 +160,7 @@ void setup() {
 
 void loop() {
   if (!mqtt.connected()) {
-    if (mqtt.connect(DEVICE_ID)) {
+    if (mqtt.connect(DEVICE_ID, mqtt_username, mqtt_password)) {
       mqtt.subscribe(mqtt_command_topic);
       Serial.println("MQTT connected, subscribed to command topic");
     }
